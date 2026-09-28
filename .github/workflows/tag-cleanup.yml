@@ -1,0 +1,67 @@
+name: Tag Cleanup POC
+
+on:
+  schedule:
+    - cron: "30 12 * * 5"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag-cleanup:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check tags older than 7 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+        run: |
+
+          echo "Starting tag cleanup check..."
+
+          CUTOFF_DATE=$(date -u -d "7 days ago" +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "Cutoff date: $CUTOFF_DATE"
+
+          gh api \
+            --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/tags?per_page=100" \
+            --jq '.[].name' > tags.txt
+
+          while read TAG; do
+
+            echo "Checking tag: $TAG"
+
+            COMMIT_SHA=$(git rev-list -n 1 "$TAG")
+
+            COMMIT_DATE=$(git show -s --format=%cI "$COMMIT_SHA")
+
+            echo "Tag: $TAG"
+            echo "Commit date: $COMMIT_DATE"
+
+            if [[ "$COMMIT_DATE" < "$CUTOFF_DATE" ]]; then
+
+              echo "OLD TAG: $TAG"
+
+            else
+
+              echo "RECENT TAG: $TAG"
+
+            fi
+
+            echo "----------------------------"
+
+          done < tags.txt
+
+          echo "Tag cleanup check completed."
